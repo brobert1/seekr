@@ -114,10 +114,12 @@ impl Chunker {
         language: Language,
     ) -> Result<Vec<CodeChunk>> {
         let mut parser = tree_sitter::Parser::new();
-        let ts_language = language.tree_sitter_language()
+        let ts_language = language
+            .tree_sitter_language()
             .context("Failed to get tree-sitter language")?;
-        
-        parser.set_language(&ts_language)
+
+        parser
+            .set_language(&ts_language)
             .context("Failed to set parser language")?;
 
         let tree = parser
@@ -240,7 +242,7 @@ impl Chunker {
         let mut chunks = Vec::new();
         let file_path_str = file_path.to_string_lossy().to_string();
         let _lines: Vec<&str> = content.lines().collect();
-        
+
         if content.is_empty() {
             return Ok(chunks);
         }
@@ -253,7 +255,7 @@ impl Chunker {
 
         while start < content.len() {
             let end = (start + self.max_chunk_size).min(content.len());
-            
+
             // Find the start and end lines
             let start_line = content[..start].matches('\n').count() + 1;
             let end_line = content[..end].matches('\n').count() + 1;

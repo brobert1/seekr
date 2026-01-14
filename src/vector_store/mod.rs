@@ -45,9 +45,9 @@ impl VectorStore {
             dimensions: dimension,
             metric: MetricKind::Cos, // Cosine similarity for text embeddings
             quantization: ScalarKind::F32,
-            connectivity: 16,        // M parameter for HNSW
-            expansion_add: 128,      // ef_construction
-            expansion_search: 64,    // ef_search
+            connectivity: 16,     // M parameter for HNSW
+            expansion_add: 128,   // ef_construction
+            expansion_search: 64, // ef_search
             multi: false,
         };
 
@@ -63,7 +63,8 @@ impl VectorStore {
 
         // Load existing index if present
         if index_path.exists() {
-            index.load(index_path.to_str().unwrap())
+            index
+                .load(index_path.to_str().unwrap())
                 .context("Failed to load existing index")?;
         }
 
@@ -79,21 +80,22 @@ impl VectorStore {
     /// Add a vector with its metadata
     pub fn add(&mut self, vector: &[f32], metadata: ChunkMetadata) -> Result<u64> {
         let key = self.metadata.len() as u64;
-        
+
         // Ensure index has capacity (usearch requires this)
         let current_capacity = self.index.capacity();
         if key >= current_capacity as u64 {
             let new_capacity = (current_capacity + 1000).max(1000);
-            self.index.reserve(new_capacity)
+            self.index
+                .reserve(new_capacity)
                 .context("Failed to reserve index capacity")?;
         }
-        
+
         self.index
             .add(key, vector)
             .context("Failed to add vector to index")?;
-        
+
         self.metadata.push(metadata);
-        
+
         Ok(key)
     }
 
@@ -107,12 +109,13 @@ impl VectorStore {
 
     /// Search for similar vectors
     pub fn search(&self, query_vector: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
-        let results = self.index
+        let results = self
+            .index
             .search(query_vector, limit)
             .context("Failed to search vectors")?;
 
         let mut search_results = Vec::new();
-        
+
         for (key, distance) in results.keys.iter().zip(results.distances.iter()) {
             let key = *key as usize;
             if key < self.metadata.len() {

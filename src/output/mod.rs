@@ -60,11 +60,7 @@ impl ResultPrinter {
         );
 
         // Language badge
-        println!(
-            "    {} {}",
-            "language:".dimmed(),
-            result.language.magenta()
-        );
+        println!("    {} {}", "language:".dimmed(), result.language.magenta());
 
         // Get syntax for highlighting
         let syntax = self

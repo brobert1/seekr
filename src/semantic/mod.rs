@@ -75,7 +75,10 @@ impl SemanticIndexer {
     }
 
     /// Index all files from specified paths
-    pub fn index_files<P: AsRef<Path>>(&mut self, files: &[(P, String)]) -> Result<SemanticIndexStats> {
+    pub fn index_files<P: AsRef<Path>>(
+        &mut self,
+        files: &[(P, String)],
+    ) -> Result<SemanticIndexStats> {
         let start = Instant::now();
         let mut stats = SemanticIndexStats::default();
 
@@ -185,7 +188,7 @@ impl SemanticIndexer {
     pub fn get_stats(&mut self) -> Result<(usize, u64)> {
         self.ensure_vector_store()?;
         let store = self.vector_store.as_ref().unwrap();
-        
+
         let num_vectors = store.len();
         let size = std::fs::metadata(self.index_path.join("vectors.usearch"))
             .map(|m| m.len())

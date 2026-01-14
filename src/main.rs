@@ -9,8 +9,8 @@ use clap::Parser;
 use colored::Colorize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod cli;
 mod chunker;
+mod cli;
 mod embedder;
 mod indexer;
 mod output;
@@ -33,14 +33,23 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Index { path, force, semantic } => {
+        Commands::Index {
+            path,
+            force,
+            semantic,
+        } => {
             let path = path.unwrap_or_else(|| std::env::current_dir().unwrap());
-            tracing::info!("Indexing: {:?} (force={}, semantic={})", path, force, semantic);
-            
+            tracing::info!(
+                "Indexing: {:?} (force={}, semantic={})",
+                path,
+                force,
+                semantic
+            );
+
             // BM25 lexical index (always)
             let mut indexer = Indexer::new(&path, force)?;
             let stats = indexer.index_directory(&path)?;
-            
+
             println!("\n✨ Lexical indexing complete!");
             println!("   Files indexed: {}", stats.files_indexed);
             println!("   Total lines: {}", stats.total_lines);
@@ -49,11 +58,11 @@ fn main() -> Result<()> {
             // Semantic index (if requested)
             if semantic {
                 println!("\n🧠 Building semantic index (this may take a while on first run)...");
-                
+
                 let home = dirs::home_dir().expect("Could not find home directory");
                 let semantic_path = home.join(".seekr");
                 let mut semantic_indexer = semantic::SemanticIndexer::new(&semantic_path)?;
-                
+
                 // Collect files for semantic indexing
                 let mut files: Vec<(std::path::PathBuf, String)> = Vec::new();
                 let walker = ignore::WalkBuilder::new(&path)
@@ -78,57 +87,82 @@ fn main() -> Result<()> {
                     .iter()
                     .map(|(p, c)| (p.as_path(), c.clone()))
                     .collect();
-                    
+
                 let sem_stats = semantic_indexer.index_files(&file_refs)?;
-                
+
                 println!("   Chunks created: {}", sem_stats.chunks_created);
                 println!("   Embeddings: {}", sem_stats.embeddings_generated);
                 println!("   Time: {:.2}s", sem_stats.duration_secs);
             }
         }
-        Commands::Search { query, limit, context, semantic, hybrid, alpha, json } => {
-            tracing::info!("Searching for: {} (semantic={}, hybrid={}, alpha={}, json={})", query, semantic, hybrid, alpha, json);
-            
+        Commands::Search {
+            query,
+            limit,
+            context,
+            semantic,
+            hybrid,
+            alpha,
+            json,
+        } => {
+            tracing::info!(
+                "Searching for: {} (semantic={}, hybrid={}, alpha={}, json={})",
+                query,
+                semantic,
+                hybrid,
+                alpha,
+                json
+            );
+
             if hybrid {
                 // Hybrid search: combine BM25 + semantic
-                if !json { println!("\n🔀 Hybrid search (α={:.2})...", alpha); }
-                
+                if !json {
+                    println!("\n🔀 Hybrid search (α={:.2})...", alpha);
+                }
+
                 // Get BM25 results
                 let index_path = Indexer::default_index_path()?;
                 let indexer = Indexer::open(&index_path)?;
                 let bm25_results = indexer.search(&query, limit * 2)?;
-                
+
                 // Get semantic results
                 let home = dirs::home_dir().expect("Could not find home directory");
                 let semantic_path = home.join(".seekr");
                 let mut semantic_indexer = semantic::SemanticIndexer::new(&semantic_path)?;
-                
+
                 if !semantic_indexer.index_exists() {
-                    println!("\n⚠️  No semantic index. Run `seekr index --semantic` for best results.");
+                    println!(
+                        "\n⚠️  No semantic index. Run `seekr index --semantic` for best results."
+                    );
                     println!("   Falling back to lexical search only.\n");
                     let printer = ResultPrinter::new(context);
                     printer.print_results(&bm25_results)?;
                     return Ok(());
                 }
-                
+
                 let sem_results = semantic_indexer.search(&query, limit * 2)?;
-                
+
                 // Convert to RankedResults
-                let lexical: Vec<ranker::RankedResult> = bm25_results.iter().map(|r| {
-                    ranker::RankedResult {
+                let lexical: Vec<ranker::RankedResult> = bm25_results
+                    .iter()
+                    .map(|r| ranker::RankedResult {
                         file_path: r.file_path.clone(),
                         chunk_id: None,
                         score: r.score,
                         source: ranker::SearchSource::Lexical,
                         start_line: r.matching_lines.first().map(|(l, _)| *l).unwrap_or(1),
                         end_line: r.matching_lines.last().map(|(l, _)| *l).unwrap_or(1),
-                        content_preview: r.matching_lines.first().map(|(_, c)| c.clone()).unwrap_or_default(),
+                        content_preview: r
+                            .matching_lines
+                            .first()
+                            .map(|(_, c)| c.clone())
+                            .unwrap_or_default(),
                         name: None,
-                    }
-                }).collect();
-                
-                let semantic_ranked: Vec<ranker::RankedResult> = sem_results.iter().map(|r| {
-                    ranker::RankedResult {
+                    })
+                    .collect();
+
+                let semantic_ranked: Vec<ranker::RankedResult> = sem_results
+                    .iter()
+                    .map(|r| ranker::RankedResult {
                         file_path: r.file_path.clone(),
                         chunk_id: None,
                         score: r.similarity_score,
@@ -137,9 +171,9 @@ fn main() -> Result<()> {
                         end_line: r.end_line,
                         content_preview: r.content_preview.clone(),
                         name: r.name.clone(),
-                    }
-                }).collect();
-                
+                    })
+                    .collect();
+
                 // Fuse results
                 let ranker_config = ranker::HybridConfig {
                     alpha,
@@ -148,27 +182,30 @@ fn main() -> Result<()> {
                 };
                 let hybrid_ranker = ranker::HybridRanker::new(ranker_config);
                 let fused = hybrid_ranker.fuse(lexical, semantic_ranked, limit);
-                
+
                 // Print fused results
                 if json {
                     // JSON output for tool integration
-                    let json_results: Vec<serde_json::Value> = fused.iter().map(|r| {
-                        serde_json::json!({
-                            "file": r.file_path,
-                            "score": r.score,
-                            "start_line": r.start_line,
-                            "end_line": r.end_line,
-                            "name": r.name,
-                            "preview": r.content_preview,
-                            "source": format!("{:?}", r.source)
+                    let json_results: Vec<serde_json::Value> = fused
+                        .iter()
+                        .map(|r| {
+                            serde_json::json!({
+                                "file": r.file_path,
+                                "score": r.score,
+                                "start_line": r.start_line,
+                                "end_line": r.end_line,
+                                "name": r.name,
+                                "preview": r.content_preview,
+                                "source": format!("{:?}", r.source)
+                            })
                         })
-                    }).collect();
+                        .collect();
                     println!("{}", serde_json::to_string_pretty(&json_results)?);
                 } else if fused.is_empty() {
                     println!("\n{}", "No results found.".yellow());
                 } else {
                     println!("\n{} {} hybrid results:\n", "Found".green(), fused.len());
-                    
+
                     for (i, result) in fused.iter().enumerate() {
                         println!(
                             "{} {} {} {}",
@@ -177,7 +214,8 @@ fn main() -> Result<()> {
                             "·".dimmed(),
                             format!("score: {:.3}", result.score).dimmed()
                         );
-                        println!("    {} {} {}",
+                        println!(
+                            "    {} {} {}",
                             "lines:".dimmed(),
                             format!("{}-{}", result.start_line, result.end_line),
                             format!("[{:?}]", result.source).dimmed()
@@ -186,7 +224,15 @@ fn main() -> Result<()> {
                             println!("    {} {}", "name:".dimmed(), name);
                         }
                         if !result.content_preview.is_empty() {
-                            println!("    {}", result.content_preview.chars().take(100).collect::<String>().dimmed());
+                            println!(
+                                "    {}",
+                                result
+                                    .content_preview
+                                    .chars()
+                                    .take(100)
+                                    .collect::<String>()
+                                    .dimmed()
+                            );
                         }
                         println!();
                     }
@@ -196,22 +242,19 @@ fn main() -> Result<()> {
                 let home = dirs::home_dir().expect("Could not find home directory");
                 let semantic_path = home.join(".seekr");
                 let mut semantic_indexer = semantic::SemanticIndexer::new(&semantic_path)?;
-                
+
                 if !semantic_indexer.index_exists() {
                     println!("\n❌ No semantic index found. Run `seekr index --semantic` first.");
                     return Ok(());
                 }
-                
+
                 let results = semantic_indexer.search(&query, limit)?;
-                
+
                 if results.is_empty() {
                     println!("\n{}", "No results found.".yellow());
                 } else {
-                    println!("\n{} {} results:\n", 
-                        "Found".green(),
-                        results.len()
-                    );
-                    
+                    println!("\n{} {} results:\n", "Found".green(), results.len());
+
                     for (i, result) in results.iter().enumerate() {
                         println!(
                             "{} {} {} {}",
@@ -220,7 +263,8 @@ fn main() -> Result<()> {
                             "·".dimmed(),
                             format!("similarity: {:.2}", result.similarity_score).dimmed()
                         );
-                        println!("    {} {} {} {}",
+                        println!(
+                            "    {} {} {} {}",
                             "type:".dimmed(),
                             result.chunk_type.magenta(),
                             "lines:".dimmed(),
@@ -238,18 +282,21 @@ fn main() -> Result<()> {
                 let index_path = Indexer::default_index_path()?;
                 let indexer = Indexer::open(&index_path)?;
                 let results = indexer.search(&query, limit)?;
-                
+
                 if json {
-                    let json_results: Vec<serde_json::Value> = results.iter().map(|r| {
-                        serde_json::json!({
-                            "file": r.file_path,
-                            "score": r.score,
-                            "language": r.language,
-                            "matching_lines": r.matching_lines.iter().map(|(l, c)| {
-                                serde_json::json!({"line": l, "content": c})
-                            }).collect::<Vec<_>>()
+                    let json_results: Vec<serde_json::Value> = results
+                        .iter()
+                        .map(|r| {
+                            serde_json::json!({
+                                "file": r.file_path,
+                                "score": r.score,
+                                "language": r.language,
+                                "matching_lines": r.matching_lines.iter().map(|(l, c)| {
+                                    serde_json::json!({"line": l, "content": c})
+                                }).collect::<Vec<_>>()
+                            })
                         })
-                    }).collect();
+                        .collect();
                     println!("{}", serde_json::to_string_pretty(&json_results)?);
                 } else {
                     let printer = ResultPrinter::new(context);

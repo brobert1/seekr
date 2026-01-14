@@ -19,10 +19,9 @@ impl Embedder {
     /// Create a new embedder with the default model (BGE-small-en-v1.5)
     pub fn new() -> Result<Self> {
         tracing::info!("Loading embedding model (bge-small-en-v1.5)...");
-        
+
         let model = TextEmbedding::try_new(
-            InitOptions::new(EmbeddingModel::BGESmallENV15)
-                .with_show_download_progress(true)
+            InitOptions::new(EmbeddingModel::BGESmallENV15).with_show_download_progress(true),
         )
         .context("Failed to initialize embedding model")?;
 
@@ -45,11 +44,9 @@ impl Embedder {
             _ => 384, // Default fallback
         };
 
-        let model = TextEmbedding::try_new(
-            InitOptions::new(model_name)
-                .with_show_download_progress(true)
-        )
-        .context("Failed to initialize embedding model")?;
+        let model =
+            TextEmbedding::try_new(InitOptions::new(model_name).with_show_download_progress(true))
+                .context("Failed to initialize embedding model")?;
 
         Ok(Self { model, dimension })
     }
@@ -61,7 +58,8 @@ impl Embedder {
 
     /// Generate embedding for a single text
     pub fn embed_one(&self, text: &str) -> Result<Vec<f32>> {
-        let embeddings = self.model
+        let embeddings = self
+            .model
             .embed(vec![text], None)
             .context("Failed to generate embedding")?;
 

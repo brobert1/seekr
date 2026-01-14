@@ -133,7 +133,7 @@ impl Indexer {
 
         for entry in walker.filter_map(|e| e.ok()) {
             let entry_path = entry.path();
-            
+
             // Skip directories and non-text files
             if !entry_path.is_file() {
                 continue;
@@ -199,7 +199,8 @@ impl Indexer {
         let language_field = self.schema.get_field("language").unwrap();
 
         // Create query parser for content field
-        let query_parser = QueryParser::for_index(&self.index, vec![content_field, file_path_field]);
+        let query_parser =
+            QueryParser::for_index(&self.index, vec![content_field, file_path_field]);
         let query = query_parser.parse_query(query_str)?;
 
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;

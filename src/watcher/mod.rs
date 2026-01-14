@@ -5,11 +5,11 @@
 //! overwhelming the indexer.
 
 use anyhow::Result;
-use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher, EventKind};
+use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
-use std::collections::HashSet;
 
 use crate::indexer::Indexer;
 
@@ -44,7 +44,10 @@ impl FileWatcher {
 
         watcher.watch(path, RecursiveMode::Recursive)?;
 
-        println!("🔍 Watching {} for changes... (Ctrl+C to stop)", path.display());
+        println!(
+            "🔍 Watching {} for changes... (Ctrl+C to stop)",
+            path.display()
+        );
         println!("   Debounce: {}ms\n", self.debounce_ms);
 
         let mut pending_files: HashSet<String> = HashSet::new();
@@ -70,19 +73,16 @@ impl FileWatcher {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     // Debounce timeout - process pending changes
-                    if !pending_files.is_empty() 
-                        && last_index_time.elapsed() >= debounce_duration 
-                    {
+                    if !pending_files.is_empty() && last_index_time.elapsed() >= debounce_duration {
                         let count = pending_files.len();
                         println!("📝 {} file(s) changed, re-indexing...", count);
-                        
+
                         // Re-index
                         match self.reindex(path) {
                             Ok(stats) => {
                                 println!(
                                     "   ✨ Indexed {} files in {:.2}s\n",
-                                    stats.files_indexed,
-                                    stats.duration_secs
+                                    stats.files_indexed, stats.duration_secs
                                 );
                             }
                             Err(e) => {
@@ -119,8 +119,22 @@ impl FileWatcher {
         match path.extension().and_then(|e| e.to_str()) {
             Some(ext) => matches!(
                 ext,
-                "rs" | "py" | "js" | "jsx" | "ts" | "tsx" | "go" | "java" 
-                | "c" | "h" | "cpp" | "hpp" | "rb" | "md" | "toml" | "yaml" | "json"
+                "rs" | "py"
+                    | "js"
+                    | "jsx"
+                    | "ts"
+                    | "tsx"
+                    | "go"
+                    | "java"
+                    | "c"
+                    | "h"
+                    | "cpp"
+                    | "hpp"
+                    | "rb"
+                    | "md"
+                    | "toml"
+                    | "yaml"
+                    | "json"
             ),
             None => false,
         }

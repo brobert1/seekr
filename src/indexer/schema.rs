@@ -48,10 +48,7 @@ pub fn build_schema() -> Schema {
     );
 
     // Language - stored and fast field for filtering
-    schema_builder.add_text_field(
-        "language",
-        TextOptions::default().set_stored(),
-    );
+    schema_builder.add_text_field("language", TextOptions::default().set_stored());
 
     // Line count - stored for statistics
     schema_builder.add_u64_field("line_count", STORED);
