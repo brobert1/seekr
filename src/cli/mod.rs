@@ -32,6 +32,10 @@ pub enum Commands {
         /// Force full reindex, ignoring cache
         #[arg(short, long, default_value = "false")]
         force: bool,
+
+        /// Also build semantic embeddings index (slower but enables natural language search)
+        #[arg(short, long, default_value = "false")]
+        semantic: bool,
     },
 
     /// Search the indexed codebase
@@ -47,6 +51,10 @@ pub enum Commands {
         /// Lines of context to show around matches
         #[arg(short, long, default_value = "3")]
         context: usize,
+
+        /// Use semantic search (embeddings) instead of lexical (BM25)
+        #[arg(long, default_value = "false")]
+        semantic: bool,
     },
 
     /// Watch for file changes and auto-reindex

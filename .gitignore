@@ -13,3 +13,6 @@ Thumbs.db
 
 # Index data (user-specific)
 .seekr/
+
+# Model cache (downloaded on first run)
+.fastembed_cache/
