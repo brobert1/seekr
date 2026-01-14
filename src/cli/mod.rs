@@ -63,6 +63,10 @@ pub enum Commands {
         /// Alpha weight for hybrid search (0.0 = all semantic, 1.0 = all BM25)
         #[arg(long, default_value = "0.5")]
         alpha: f32,
+
+        /// Output results as JSON (for tool integration)
+        #[arg(long, default_value = "false")]
+        json: bool,
     },
 
     /// Watch for file changes and auto-reindex

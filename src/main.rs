@@ -17,6 +17,7 @@ mod output;
 mod ranker;
 mod semantic;
 mod vector_store;
+mod watcher;
 
 use cli::{Cli, Commands};
 use indexer::Indexer;
@@ -85,12 +86,12 @@ fn main() -> Result<()> {
                 println!("   Time: {:.2}s", sem_stats.duration_secs);
             }
         }
-        Commands::Search { query, limit, context, semantic, hybrid, alpha } => {
-            tracing::info!("Searching for: {} (semantic={}, hybrid={}, alpha={})", query, semantic, hybrid, alpha);
+        Commands::Search { query, limit, context, semantic, hybrid, alpha, json } => {
+            tracing::info!("Searching for: {} (semantic={}, hybrid={}, alpha={}, json={})", query, semantic, hybrid, alpha, json);
             
             if hybrid {
                 // Hybrid search: combine BM25 + semantic
-                println!("\n🔀 Hybrid search (α={:.2})...", alpha);
+                if !json { println!("\n🔀 Hybrid search (α={:.2})...", alpha); }
                 
                 // Get BM25 results
                 let index_path = Indexer::default_index_path()?;
@@ -149,7 +150,21 @@ fn main() -> Result<()> {
                 let fused = hybrid_ranker.fuse(lexical, semantic_ranked, limit);
                 
                 // Print fused results
-                if fused.is_empty() {
+                if json {
+                    // JSON output for tool integration
+                    let json_results: Vec<serde_json::Value> = fused.iter().map(|r| {
+                        serde_json::json!({
+                            "file": r.file_path,
+                            "score": r.score,
+                            "start_line": r.start_line,
+                            "end_line": r.end_line,
+                            "name": r.name,
+                            "preview": r.content_preview,
+                            "source": format!("{:?}", r.source)
+                        })
+                    }).collect();
+                    println!("{}", serde_json::to_string_pretty(&json_results)?);
+                } else if fused.is_empty() {
                     println!("\n{}", "No results found.".yellow());
                 } else {
                     println!("\n{} {} hybrid results:\n", "Found".green(), fused.len());
@@ -224,15 +239,29 @@ fn main() -> Result<()> {
                 let indexer = Indexer::open(&index_path)?;
                 let results = indexer.search(&query, limit)?;
                 
-                let printer = ResultPrinter::new(context);
-                printer.print_results(&results)?;
+                if json {
+                    let json_results: Vec<serde_json::Value> = results.iter().map(|r| {
+                        serde_json::json!({
+                            "file": r.file_path,
+                            "score": r.score,
+                            "language": r.language,
+                            "matching_lines": r.matching_lines.iter().map(|(l, c)| {
+                                serde_json::json!({"line": l, "content": c})
+                            }).collect::<Vec<_>>()
+                        })
+                    }).collect();
+                    println!("{}", serde_json::to_string_pretty(&json_results)?);
+                } else {
+                    let printer = ResultPrinter::new(context);
+                    printer.print_results(&results)?;
+                }
             }
         }
         Commands::Watch => {
             tracing::info!("Starting file watcher...");
-            println!("🔍 Watching for file changes... (Ctrl+C to stop)");
-            // TODO: Implement filesystem watcher (Phase 3)
-            println!("⚠️  Watch command not yet implemented");
+            let path = std::env::current_dir()?;
+            let file_watcher = watcher::FileWatcher::default();
+            file_watcher.watch(&path)?;
         }
         Commands::Similar { file, range } => {
             tracing::info!("Finding similar code to {:?} range {:?}", file, range);
