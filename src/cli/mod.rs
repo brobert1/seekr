@@ -55,6 +55,14 @@ pub enum Commands {
         /// Use semantic search (embeddings) instead of lexical (BM25)
         #[arg(long, default_value = "false")]
         semantic: bool,
+
+        /// Use hybrid search (combines BM25 + semantic with RRF fusion)
+        #[arg(long, default_value = "false")]
+        hybrid: bool,
+
+        /// Alpha weight for hybrid search (0.0 = all semantic, 1.0 = all BM25)
+        #[arg(long, default_value = "0.5")]
+        alpha: f32,
     },
 
     /// Watch for file changes and auto-reindex

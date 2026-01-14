@@ -14,6 +14,7 @@ mod chunker;
 mod embedder;
 mod indexer;
 mod output;
+mod ranker;
 mod semantic;
 mod vector_store;
 
@@ -84,10 +85,98 @@ fn main() -> Result<()> {
                 println!("   Time: {:.2}s", sem_stats.duration_secs);
             }
         }
-        Commands::Search { query, limit, context, semantic } => {
-            tracing::info!("Searching for: {} (semantic={})", query, semantic);
+        Commands::Search { query, limit, context, semantic, hybrid, alpha } => {
+            tracing::info!("Searching for: {} (semantic={}, hybrid={}, alpha={})", query, semantic, hybrid, alpha);
             
-            if semantic {
+            if hybrid {
+                // Hybrid search: combine BM25 + semantic
+                println!("\n🔀 Hybrid search (α={:.2})...", alpha);
+                
+                // Get BM25 results
+                let index_path = Indexer::default_index_path()?;
+                let indexer = Indexer::open(&index_path)?;
+                let bm25_results = indexer.search(&query, limit * 2)?;
+                
+                // Get semantic results
+                let home = dirs::home_dir().expect("Could not find home directory");
+                let semantic_path = home.join(".seekr");
+                let mut semantic_indexer = semantic::SemanticIndexer::new(&semantic_path)?;
+                
+                if !semantic_indexer.index_exists() {
+                    println!("\n⚠️  No semantic index. Run `seekr index --semantic` for best results.");
+                    println!("   Falling back to lexical search only.\n");
+                    let printer = ResultPrinter::new(context);
+                    printer.print_results(&bm25_results)?;
+                    return Ok(());
+                }
+                
+                let sem_results = semantic_indexer.search(&query, limit * 2)?;
+                
+                // Convert to RankedResults
+                let lexical: Vec<ranker::RankedResult> = bm25_results.iter().map(|r| {
+                    ranker::RankedResult {
+                        file_path: r.file_path.clone(),
+                        chunk_id: None,
+                        score: r.score,
+                        source: ranker::SearchSource::Lexical,
+                        start_line: r.matching_lines.first().map(|(l, _)| *l).unwrap_or(1),
+                        end_line: r.matching_lines.last().map(|(l, _)| *l).unwrap_or(1),
+                        content_preview: r.matching_lines.first().map(|(_, c)| c.clone()).unwrap_or_default(),
+                        name: None,
+                    }
+                }).collect();
+                
+                let semantic_ranked: Vec<ranker::RankedResult> = sem_results.iter().map(|r| {
+                    ranker::RankedResult {
+                        file_path: r.file_path.clone(),
+                        chunk_id: None,
+                        score: r.similarity_score,
+                        source: ranker::SearchSource::Semantic,
+                        start_line: r.start_line,
+                        end_line: r.end_line,
+                        content_preview: r.content_preview.clone(),
+                        name: r.name.clone(),
+                    }
+                }).collect();
+                
+                // Fuse results
+                let ranker_config = ranker::HybridConfig {
+                    alpha,
+                    rrf_k: 60.0,
+                    use_rrf: true,
+                };
+                let hybrid_ranker = ranker::HybridRanker::new(ranker_config);
+                let fused = hybrid_ranker.fuse(lexical, semantic_ranked, limit);
+                
+                // Print fused results
+                if fused.is_empty() {
+                    println!("\n{}", "No results found.".yellow());
+                } else {
+                    println!("\n{} {} hybrid results:\n", "Found".green(), fused.len());
+                    
+                    for (i, result) in fused.iter().enumerate() {
+                        println!(
+                            "{} {} {} {}",
+                            format!("[{}]", i + 1).cyan().bold(),
+                            result.file_path.blue().bold(),
+                            "·".dimmed(),
+                            format!("score: {:.3}", result.score).dimmed()
+                        );
+                        println!("    {} {} {}",
+                            "lines:".dimmed(),
+                            format!("{}-{}", result.start_line, result.end_line),
+                            format!("[{:?}]", result.source).dimmed()
+                        );
+                        if let Some(name) = &result.name {
+                            println!("    {} {}", "name:".dimmed(), name);
+                        }
+                        if !result.content_preview.is_empty() {
+                            println!("    {}", result.content_preview.chars().take(100).collect::<String>().dimmed());
+                        }
+                        println!();
+                    }
+                }
+            } else if semantic {
                 // Semantic search
                 let home = dirs::home_dir().expect("Could not find home directory");
                 let semantic_path = home.join(".seekr");
