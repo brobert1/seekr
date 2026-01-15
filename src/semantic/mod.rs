@@ -105,45 +105,62 @@ impl SemanticIndexer {
             return Ok(stats);
         }
 
-        // Generate embeddings in batches
+        // Initialize embedder and vector store
         self.ensure_embedder()?;
-        let embedder = self.embedder.as_ref().unwrap();
-
-        // Prepare texts for embedding
-        let texts: Vec<String> = all_chunks
-            .iter()
-            .map(|chunk| {
-                format!(
-                    "[{}] {}: {}",
-                    chunk.language.name(),
-                    chunk.chunk_type,
-                    &chunk.content[..chunk.content.len().min(1000)]
-                )
-            })
-            .collect();
-
-        let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
-        let embeddings = embedder.embed_batch(text_refs)?;
-        stats.embeddings_generated = embeddings.len();
-
-        // Store in vector store
         self.ensure_vector_store()?;
+        let embedder = self.embedder.as_ref().unwrap();
         let store = self.vector_store.as_mut().unwrap();
 
-        for (chunk, embedding) in all_chunks.iter().zip(embeddings.iter()) {
-            let metadata = ChunkMetadata {
-                file_path: chunk.file_path.clone(),
-                chunk_type: chunk.chunk_type.to_string(),
-                name: chunk.name.clone(),
-                start_line: chunk.start_line,
-                end_line: chunk.end_line,
-                language: chunk.language.name().to_string(),
-                content_preview: chunk.content.chars().take(200).collect(),
-            };
+        // Process in batches of 32 to limit memory usage
+        const BATCH_SIZE: usize = 32;
+        let total_batches = (all_chunks.len() + BATCH_SIZE - 1) / BATCH_SIZE;
 
-            store.add(embedding, metadata)?;
+        for (batch_idx, chunk_batch) in all_chunks.chunks(BATCH_SIZE).enumerate() {
+            // Progress indicator
+            print!(
+                "\r   Processing batch {}/{} ({} chunks)...   ",
+                batch_idx + 1,
+                total_batches,
+                stats.embeddings_generated + chunk_batch.len()
+            );
+            std::io::Write::flush(&mut std::io::stdout()).ok();
+
+            // Prepare texts for this batch
+            let texts: Vec<String> = chunk_batch
+                .iter()
+                .map(|chunk| {
+                    format!(
+                        "[{}] {}: {}",
+                        chunk.language.name(),
+                        chunk.chunk_type,
+                        &chunk.content[..chunk.content.len().min(500)] // Limit chunk size
+                    )
+                })
+                .collect();
+
+            let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
+            
+            // Embed this batch
+            let embeddings = embedder.embed_batch(text_refs)?;
+            stats.embeddings_generated += embeddings.len();
+
+            // Store embeddings immediately (don't hold in memory)
+            for (chunk, embedding) in chunk_batch.iter().zip(embeddings.iter()) {
+                let metadata = ChunkMetadata {
+                    file_path: chunk.file_path.clone(),
+                    chunk_type: chunk.chunk_type.to_string(),
+                    name: chunk.name.clone(),
+                    start_line: chunk.start_line,
+                    end_line: chunk.end_line,
+                    language: chunk.language.name().to_string(),
+                    content_preview: chunk.content.chars().take(200).collect(),
+                };
+
+                store.add(embedding, metadata)?;
+            }
         }
 
+        println!(); // Newline after progress
         store.save()?;
         stats.duration_secs = start.elapsed().as_secs_f64();
 
