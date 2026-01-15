@@ -16,3 +16,4 @@ Thumbs.db
 
 # Model cache (downloaded on first run)
 .fastembed_cache/
+bench/results.md
