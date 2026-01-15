@@ -1,57 +1,88 @@
-# 🔍 Seekr
+<p align="center">
+  <h1 align="center">🔍 Seekr</h1>
+  <p align="center">
+    <strong>Ultra-fast local hybrid semantic code search</strong>
+  </p>
+  <p align="center">
+    Combines BM25 lexical precision with neural embeddings for intelligent, privacy-first code discovery.
+  </p>
+</p>
 
-**Ultra-fast local hybrid semantic code search** — combines BM25 lexical search with vector embeddings for the best of both worlds.
-
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
-> _"I got tired of ripgrep missing conceptual matches and pure vector search being slow on identifiers. So I built a hybrid engine that combines Tantivy BM25 precision with fast local embeddings — runs entirely locally, indexes incrementally, and feels magical in daily use."_
-
----
-
-## ⚡ Performance
-
-Tested on a **116k LOC** JavaScript/TypeScript codebase:
-
-| Metric            | Result  | Target |
-| ----------------- | ------- | ------ |
-| **Index time**    | 0.19s   | <60s   |
-| **Query latency** | 5-20ms  | <150ms |
-| **Index size**    | 2.33 MB | <500MB |
-| **Files indexed** | 1,606   | -      |
-
-> Automatically respects `.gitignore` — skipped 55,000+ `node_modules` files!
+<p align="center">
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.75%2B-orange.svg" alt="Rust"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="#"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg" alt="Platform"></a>
+</p>
 
 ---
 
-## 🚀 Quick Start
+## Why Seekr?
+
+Traditional code search tools force you to choose: **exact keyword matching** (fast but misses concepts) or **semantic search** (understands intent but slow on identifiers). Seekr combines both approaches, giving you:
+
+- 🎯 **Exact matches** when you search for `getUserById`
+- 🧠 **Conceptual matches** when you search for "authentication flow"
+- ⚡ **Sub-20ms responses** on codebases with 100k+ lines
+
+All processing happens locally. No cloud APIs, no data leaving your machine.
+
+---
+
+## Features
+
+| Feature                    | Description                                                      |
+| -------------------------- | ---------------------------------------------------------------- |
+| **Hybrid Search**          | Fuses BM25 + semantic vectors using Reciprocal Rank Fusion (RRF) |
+| **Semantic Understanding** | Finds code by concept using BGE neural embeddings                |
+| **Incremental Indexing**   | Only re-indexes files that changed since last run                |
+| **Watch Mode**             | Automatically updates index when files are saved                 |
+| **Syntax Highlighting**    | Beautiful colorized output with context                          |
+| **JSON Output**            | Machine-readable format for editor integration                   |
+| **Privacy-First**          | 100% local — no telemetry, no cloud dependencies                 |
+
+---
+
+## Quick Start
 
 ```bash
-# Build
-cargo build --release
+# Install from source
+git clone https://github.com/brobert1/seekr
+cd seekr
+cargo install --path .
 
-# Index your codebase
-seekr index .
+# Initialize your project (builds lexical + semantic index)
+cd /path/to/your/project
+seekr init
 
-# Search
-seekr search "authentication"
-seekr search "error handling"
-
-# Check status
-seekr status
+# Search!
+seekr search "error handling" --hybrid
 ```
 
 ---
 
-## 📖 Commands
+## Usage
 
-| Command   | Description          | Example                     |
-| --------- | -------------------- | --------------------------- |
-| `index`   | Build search index   | `seekr index . --force`     |
-| `search`  | Query the codebase   | `seekr search "auth" -l 20` |
-| `status`  | Show index health    | `seekr status`              |
-| `watch`   | Auto-reindex on save | 🔜 Coming soon              |
-| `similar` | Find similar code    | 🔜 Coming soon              |
+### Initialization
+
+```bash
+seekr init                    # Index current directory
+seekr init /path/to/project   # Index specific path
+```
+
+First run downloads a 23MB embedding model. Subsequent runs are instant.
+
+### Search Modes
+
+```bash
+# BM25 Lexical Search — fast, exact keyword matching
+seekr search "useState"
+
+# Semantic Search — understands concepts and synonyms
+seekr search "user authentication" --semantic
+
+# Hybrid Search — best of both (recommended)
+seekr search "handle database errors" --hybrid
+```
 
 ### Search Options
 
@@ -59,111 +90,172 @@ seekr status
 seekr search <QUERY> [OPTIONS]
 
 Options:
-  -l, --limit <N>     Max results (default: 10)
-  -c, --context <N>   Lines of context (default: 3)
+  -l, --limit <N>      Maximum results to return [default: 10]
+  -c, --context <N>    Lines of context around matches [default: 3]
+      --semantic       Use semantic (embedding) search
+      --hybrid         Use hybrid BM25 + semantic search
+      --alpha <FLOAT>  Weight for BM25 in hybrid mode [default: 0.5]
+      --json           Output results as JSON
+```
+
+### Watch Mode
+
+```bash
+seekr watch              # Monitor current directory
+seekr watch /path/to/src # Monitor specific path
+```
+
+Watches for file changes with 500ms debouncing, then incrementally updates the index.
+
+### Index Management
+
+```bash
+seekr index .           # Incremental update (only changed files)
+seekr index . --force   # Full reindex from scratch
+seekr status            # Show index health and statistics
 ```
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
-![Seekr Architecture](assets/architecture.png)
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Source Files                               │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                    ┌──────────────┴──────────────┐
+                    ▼                              ▼
+        ┌───────────────────┐          ┌───────────────────┐
+        │   File Walker     │          │   Tree-sitter     │
+        │   (respects       │          │   Chunker         │
+        │   .gitignore)     │          │   (AST parsing)   │
+        └───────────────────┘          └───────────────────┘
+                    │                              │
+                    ▼                              ▼
+        ┌───────────────────┐          ┌───────────────────┐
+        │     Tantivy       │          │   BGE-small-en    │
+        │   BM25 Index      │          │   Embeddings      │
+        └───────────────────┘          └───────────────────┘
+                    │                              │
+                    ▼                              ▼
+        ┌───────────────────┐          ┌───────────────────┐
+        │  Lexical Results  │          │  USearch HNSW     │
+        │                   │          │  Vector Index     │
+        └───────────────────┘          └───────────────────┘
+                    │                              │
+                    └──────────────┬───────────────┘
+                                   ▼
+                    ┌───────────────────────────┐
+                    │   Reciprocal Rank Fusion  │
+                    │   (Hybrid Ranking)        │
+                    └───────────────────────────┘
+                                   │
+                                   ▼
+                    ┌───────────────────────────┐
+                    │   Syntax-Highlighted      │
+                    │   Results                 │
+                    └───────────────────────────┘
+```
 
-The CLI routes commands through three main paths:
+### Technology Stack
 
-- **Index** → File Walker → Tantivy Writer → `~/.seekr/index`
-- **Search** → Query Engine → Tantivy Reader → Result Printer → Syntax Highlighting
-- **Status** → Direct index health check
+| Component      | Technology                                         | Purpose                            |
+| -------------- | -------------------------------------------------- | ---------------------------------- |
+| Lexical Search | [Tantivy](https://github.com/quickwit-oss/tantivy) | BM25 full-text indexing            |
+| Code Parsing   | [Tree-sitter](https://tree-sitter.github.io/)      | AST-based semantic chunking        |
+| Embeddings     | [Fastembed](https://github.com/qdrant/fastembed)   | Local BGE-small-en-v1.5 (384d)     |
+| Vector Search  | [USearch](https://github.com/unum-cloud/usearch)   | HNSW approximate nearest neighbors |
+| File Watching  | [Notify](https://github.com/notify-rs/notify)      | Cross-platform filesystem events   |
+| CLI            | [Clap](https://github.com/clap-rs/clap)            | Argument parsing and help          |
 
 ---
 
-## 🎨 Features
+## Supported Languages
 
-- **🚀 Blazing Fast** — Sub-20ms queries on 100k+ LOC
-- **🔒 100% Local** — No cloud, no telemetry, complete privacy
-- **📝 Syntax Highlighting** — Beautiful bat-like output
-- **🙈 Smart Indexing** — Respects `.gitignore` automatically
-- **🌐 Multi-language** — Rust, Python, TypeScript, Go, Java, C/C++, Ruby
+| Language   | Extensions                        | Semantic Chunking |
+| ---------- | --------------------------------- | ----------------- |
+| Rust       | `.rs`                             | ✅ Tree-sitter    |
+| Python     | `.py`                             | ✅ Tree-sitter    |
+| TypeScript | `.ts`, `.tsx`                     | ✅ Tree-sitter    |
+| JavaScript | `.js`, `.jsx`                     | ✅ Tree-sitter    |
+| Go         | `.go`                             | ✅ Tree-sitter    |
+| Java       | `.java`                           | Sliding window    |
+| C/C++      | `.c`, `.h`, `.cpp`, `.hpp`, `.cc` | Sliding window    |
+| Ruby       | `.rb`                             | Sliding window    |
+| Markdown   | `.md`                             | Sliding window    |
+| Config     | `.toml`, `.yaml`, `.yml`, `.json` | Sliding window    |
 
-### Supported Languages
-
-| Language   | Extensions                 |
-| ---------- | -------------------------- |
-| Rust       | `.rs`                      |
-| Python     | `.py`                      |
-| TypeScript | `.ts`, `.tsx`              |
-| JavaScript | `.js`, `.jsx`              |
-| Go         | `.go`                      |
-| Java       | `.java`                    |
-| C/C++      | `.c`, `.h`, `.cpp`, `.hpp` |
-| Ruby       | `.rb`                      |
-| Markdown   | `.md`                      |
-| Config     | `.toml`, `.yaml`, `.json`  |
+Languages with Tree-sitter support get intelligent chunking by functions/classes. Others use overlapping sliding windows.
 
 ---
 
-## 📦 Installation
+## Performance
+
+Benchmarked on a 116k LOC TypeScript/JavaScript project:
+
+| Metric          | Value   |
+| --------------- | ------- |
+| BM25 Index Time | 0.19s   |
+| Query Latency   | 5-20ms  |
+| Index Size      | 2.33 MB |
+| Files Indexed   | 1,606   |
+
+> Automatically skipped 55,000+ files in `node_modules` via `.gitignore` integration.
+
+---
+
+## Configuration
+
+All data is stored in `~/.seekr/`:
+
+| Path                       | Description                    |
+| -------------------------- | ------------------------------ |
+| `~/.seekr/index/`          | Tantivy BM25 index             |
+| `~/.seekr/semantic/`       | Vector embeddings and metadata |
+| `~/.seekr/file_cache.json` | File modification timestamps   |
+| `~/.seekr/workspace.txt`   | Indexed workspace path         |
+
+### Reset Index
+
+```bash
+rm -rf ~/.seekr
+seekr init
+```
+
+---
+
+## Installation
 
 ### From Source
 
 ```bash
-git clone https://github.com/bercarurobert/seekr
+git clone https://github.com/brobert1/seekr
 cd seekr
 cargo install --path .
 ```
 
 ### Requirements
 
-- Rust 1.75+
-- macOS or Linux (Windows coming soon)
+- **Rust** 1.75 or later
+- **Platform:** macOS, Linux (Windows untested)
+- **Disk:** ~150MB for embedding model (first run only)
 
 ---
 
-## 🗺️ Roadmap
+## Contributing
 
-- [x] **Phase 1** — BM25 lexical search (Tantivy)
-- [ ] **Phase 2** — Semantic chunking (tree-sitter) + embeddings
-- [ ] **Phase 3** — Hybrid ranking (RRF + weighted fusion)
-- [ ] **Phase 4** — VS Code extension
-
----
-
-## 🔧 Configuration
-
-Index is stored at `~/.seekr/index/`
+Contributions are welcome. The codebase compiles with zero warnings.
 
 ```bash
-# Force reindex
-seekr index . --force
-
-# Clear index
-rm -rf ~/.seekr/index
+cargo build            # Development build
+cargo test             # Run test suite
+cargo clippy           # Lint
+cargo build --release  # Optimized build
 ```
 
 ---
 
-## 📊 Benchmarks
-
-### Small Project (712 LOC)
-
-```
-Index: 0.14s | Query: 8ms | Size: 0.03 MB
-```
-
-### Large Project (116k LOC)
-
-```
-Index: 0.19s | Query: 5-20ms | Size: 2.33 MB
-```
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! See the [implementation plan](docs/ARCHITECTURE.md) for technical details.
-
----
-
-## 📄 License
+## License
 
 MIT © Robert Bercaru
