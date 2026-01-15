@@ -25,9 +25,6 @@ impl Default for FileWatcher {
 }
 
 impl FileWatcher {
-    pub fn new(debounce_ms: u64) -> Self {
-        Self { debounce_ms }
-    }
 
     /// Watch a directory and re-index on changes
     pub fn watch(&self, path: &Path) -> Result<()> {

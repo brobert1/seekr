@@ -24,10 +24,6 @@ pub struct CodeChunk {
     pub chunk_type: ChunkType,
     /// Name of the symbol (if applicable)
     pub name: Option<String>,
-    /// Starting byte offset
-    pub start_byte: usize,
-    /// Ending byte offset
-    pub end_byte: usize,
     /// Starting line (1-indexed)
     pub start_line: usize,
     /// Ending line (1-indexed)
@@ -79,12 +75,6 @@ impl Default for Chunker {
 }
 
 impl Chunker {
-    pub fn new(max_chunk_size: usize, overlap_ratio: f32) -> Self {
-        Self {
-            max_chunk_size,
-            overlap_ratio,
-        }
-    }
 
     /// Chunk a file into semantic units
     pub fn chunk_file(&self, file_path: &Path, content: &str) -> Result<Vec<CodeChunk>> {
@@ -153,9 +143,7 @@ impl Chunker {
         let chunk_type = self.node_to_chunk_type(node.kind(), language);
 
         if let Some(chunk_type) = chunk_type {
-            let start_byte = node.start_byte();
-            let end_byte = node.end_byte();
-            let chunk_content = &content[start_byte..end_byte];
+            let chunk_content = &content[node.start_byte()..node.end_byte()];
 
             // Skip very small chunks (less than 50 bytes)
             if chunk_content.len() >= 50 {
@@ -166,8 +154,6 @@ impl Chunker {
                     language,
                     chunk_type,
                     name,
-                    start_byte,
-                    end_byte,
                     start_line: node.start_position().row + 1,
                     end_line: node.end_position().row + 1,
                     content: chunk_content.to_string(),
@@ -265,8 +251,6 @@ impl Chunker {
                 language,
                 chunk_type: ChunkType::Block,
                 name: Some(format!("block_{}", chunk_num)),
-                start_byte: start,
-                end_byte: end,
                 start_line,
                 end_line,
                 content: content[start..end].to_string(),

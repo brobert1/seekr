@@ -30,7 +30,6 @@ pub struct VectorStore {
     index_path: PathBuf,
     metadata_path: PathBuf,
     metadata: Vec<ChunkMetadata>,
-    dimension: usize,
 }
 
 impl VectorStore {
@@ -73,7 +72,6 @@ impl VectorStore {
             index_path,
             metadata_path,
             metadata,
-            dimension,
         })
     }
 
@@ -99,13 +97,7 @@ impl VectorStore {
         Ok(key)
     }
 
-    /// Add multiple vectors in batch
-    pub fn add_batch(&mut self, vectors: &[Vec<f32>], metadatas: Vec<ChunkMetadata>) -> Result<()> {
-        for (vector, meta) in vectors.iter().zip(metadatas) {
-            self.add(vector, meta)?;
-        }
-        Ok(())
-    }
+
 
     /// Search for similar vectors
     pub fn search(&self, query_vector: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
@@ -137,43 +129,6 @@ impl VectorStore {
 
         let metadata_json = serde_json::to_string_pretty(&self.metadata)?;
         fs::write(&self.metadata_path, metadata_json)?;
-
-        Ok(())
-    }
-
-    /// Get the number of vectors in the store
-    pub fn len(&self) -> usize {
-        self.index.size()
-    }
-
-    /// Check if the store is empty
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Clear all vectors and metadata
-    pub fn clear(&mut self) -> Result<()> {
-        // Create a fresh index
-        let options = IndexOptions {
-            dimensions: self.dimension,
-            metric: MetricKind::Cos,
-            quantization: ScalarKind::F32,
-            connectivity: 16,
-            expansion_add: 128,
-            expansion_search: 64,
-            multi: false,
-        };
-
-        self.index = new_index(&options)?;
-        self.metadata.clear();
-
-        // Remove files
-        if self.index_path.exists() {
-            fs::remove_file(&self.index_path)?;
-        }
-        if self.metadata_path.exists() {
-            fs::remove_file(&self.metadata_path)?;
-        }
 
         Ok(())
     }

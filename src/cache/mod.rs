@@ -23,14 +23,9 @@ pub struct FileCache {
 /// Result of checking a file against the cache
 #[derive(Debug, PartialEq)]
 pub enum FileStatus {
-    /// File is new (not in cache)
     New,
-    /// File has been modified since last index
     Modified,
-    /// File is unchanged
     Unchanged,
-    /// File was deleted (in cache but not on disk)
-    Deleted,
 }
 
 impl FileCache {
@@ -57,7 +52,6 @@ impl FileCache {
     pub fn check_file(&self, path: &Path) -> FileStatus {
         let path_str = path.to_string_lossy().to_string();
 
-        // Get file's current modification time
         let current_mtime = match fs::metadata(path)
             .and_then(|m| m.modified())
             .ok()
@@ -65,7 +59,7 @@ impl FileCache {
             .map(|d| d.as_secs())
         {
             Some(t) => t,
-            None => return FileStatus::Deleted,
+            None => return FileStatus::New,
         };
 
         match self.files.get(&path_str) {
@@ -93,17 +87,6 @@ impl FileCache {
         }
     }
 
-    /// Remove a file from the cache
-    pub fn remove_file(&mut self, path: &Path) {
-        let path_str = path.to_string_lossy().to_string();
-        self.files.remove(&path_str);
-    }
-
-    /// Get all cached file paths
-    pub fn cached_files(&self) -> Vec<String> {
-        self.files.keys().cloned().collect()
-    }
-
     /// Clear the entire cache
     pub fn clear(&mut self) {
         self.files.clear();
@@ -117,15 +100,5 @@ impl FileCache {
         let content = serde_json::to_string_pretty(&self)?;
         fs::write(&self.cache_path, content)?;
         Ok(())
-    }
-
-    /// Get number of cached files
-    pub fn len(&self) -> usize {
-        self.files.len()
-    }
-
-    /// Check if cache is empty
-    pub fn is_empty(&self) -> bool {
-        self.files.is_empty()
     }
 }

@@ -176,7 +176,6 @@ fn main() -> Result<()> {
                     .iter()
                     .map(|r| ranker::RankedResult {
                         file_path: r.file_path.clone(),
-                        chunk_id: None,
                         score: r.score,
                         source: ranker::SearchSource::Lexical,
                         start_line: r.matching_lines.first().map(|(l, _)| *l).unwrap_or(1),
@@ -194,7 +193,6 @@ fn main() -> Result<()> {
                     .iter()
                     .map(|r| ranker::RankedResult {
                         file_path: r.file_path.clone(),
-                        chunk_id: None,
                         score: r.similarity_score,
                         source: ranker::SearchSource::Semantic,
                         start_line: r.start_line,

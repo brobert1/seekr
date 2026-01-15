@@ -5,7 +5,7 @@
 //! 2. Embedder: Generate vector embeddings for each chunk
 //! 3. VectorStore: Store and search embeddings efficiently
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::Path;
 use std::time::Instant;
 
@@ -30,7 +30,6 @@ pub struct SemanticResult {
     pub name: Option<String>,
     pub start_line: usize,
     pub end_line: usize,
-    pub language: String,
     pub content_preview: String,
     pub similarity_score: f32,
 }
@@ -189,7 +188,6 @@ impl SemanticIndexer {
                 name: r.metadata.name,
                 start_line: r.metadata.start_line,
                 end_line: r.metadata.end_line,
-                language: r.metadata.language,
                 content_preview: r.metadata.content_preview,
                 similarity_score: r.score,
             })
@@ -199,18 +197,5 @@ impl SemanticIndexer {
     /// Check if semantic index exists
     pub fn index_exists(&self) -> bool {
         self.index_path.join("vectors.usearch").exists()
-    }
-
-    /// Get index statistics
-    pub fn get_stats(&mut self) -> Result<(usize, u64)> {
-        self.ensure_vector_store()?;
-        let store = self.vector_store.as_ref().unwrap();
-
-        let num_vectors = store.len();
-        let size = std::fs::metadata(self.index_path.join("vectors.usearch"))
-            .map(|m| m.len())
-            .unwrap_or(0);
-
-        Ok((num_vectors, size))
     }
 }

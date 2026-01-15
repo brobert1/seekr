@@ -14,7 +14,6 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct RankedResult {
     pub file_path: String,
-    pub chunk_id: Option<String>,
     pub score: f32,
     pub source: SearchSource,
     pub start_line: usize,
@@ -59,15 +58,6 @@ pub struct HybridRanker {
 impl HybridRanker {
     pub fn new(config: HybridConfig) -> Self {
         Self { config }
-    }
-
-    pub fn with_alpha(alpha: f32) -> Self {
-        Self {
-            config: HybridConfig {
-                alpha,
-                ..Default::default()
-            },
-        }
     }
 
     /// Fuse lexical and semantic results into a single ranked list
