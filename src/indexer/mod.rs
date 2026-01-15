@@ -186,6 +186,102 @@ impl Indexer {
         Ok(stats)
     }
 
+    /// Incrementally index only changed files
+    pub fn index_directory_incremental(
+        &mut self,
+        path: &Path,
+        cache: &mut crate::cache::FileCache,
+    ) -> Result<IndexStats> {
+        use crate::cache::FileStatus;
+        
+        let start = Instant::now();
+        let mut stats = IndexStats::default();
+        let mut changed_files = 0;
+        let mut skipped_files = 0;
+
+        let mut writer: IndexWriter = self.index.writer(50_000_000)?;
+
+        let walker = WalkBuilder::new(path)
+            .hidden(true)
+            .git_ignore(true)
+            .git_global(true)
+            .git_exclude(true)
+            .build();
+
+        let file_path_field = self.schema.get_field("file_path").unwrap();
+        let content_field = self.schema.get_field("content").unwrap();
+        let language_field = self.schema.get_field("language").unwrap();
+        let line_count_field = self.schema.get_field("line_count").unwrap();
+
+        for entry in walker.filter_map(|e| e.ok()) {
+            let entry_path = entry.path();
+
+            if !entry_path.is_file() {
+                continue;
+            }
+
+            let language = match entry_path.extension().and_then(|e| e.to_str()) {
+                Some("rs") => "rust",
+                Some("py") => "python",
+                Some("ts" | "tsx") => "typescript",
+                Some("js" | "jsx") => "javascript",
+                Some("go") => "go",
+                Some("java") => "java",
+                Some("c" | "h") => "c",
+                Some("cpp" | "hpp" | "cc") => "cpp",
+                Some("rb") => "ruby",
+                Some("md") => "markdown",
+                Some("toml") => "toml",
+                Some("yaml" | "yml") => "yaml",
+                Some("json") => "json",
+                _ => continue,
+            };
+
+            // Check if file needs re-indexing
+            let status = cache.check_file(entry_path);
+            if status == FileStatus::Unchanged {
+                skipped_files += 1;
+                continue;
+            }
+
+            let content = match fs::read_to_string(entry_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let line_count = content.lines().count();
+            let relative_path = entry_path
+                .strip_prefix(path)
+                .unwrap_or(entry_path)
+                .to_string_lossy();
+
+            writer.add_document(doc!(
+                file_path_field => relative_path.to_string(),
+                content_field => content,
+                language_field => language,
+                line_count_field => line_count as u64
+            ))?;
+
+            // Update cache with new timestamp
+            cache.update_file(entry_path);
+            changed_files += 1;
+            stats.files_indexed += 1;
+            stats.total_lines += line_count;
+        }
+
+        writer.commit()?;
+        cache.save()?;
+        stats.duration_secs = start.elapsed().as_secs_f64();
+
+        tracing::info!(
+            "Incremental index: {} changed, {} unchanged",
+            changed_files,
+            skipped_files
+        );
+
+        Ok(stats)
+    }
+
     /// Search the index for matching documents
     pub fn search(&self, query_str: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let reader = self

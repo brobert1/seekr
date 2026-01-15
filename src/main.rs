@@ -9,6 +9,7 @@ use clap::Parser;
 use colored::Colorize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+mod cache;
 mod chunker;
 mod cli;
 mod embedder;
@@ -46,11 +47,40 @@ fn main() -> Result<()> {
                 semantic
             );
 
-            // BM25 lexical index (always)
-            let mut indexer = Indexer::new(&path, force)?;
-            let stats = indexer.index_directory(&path)?;
+            // Load file cache for incremental indexing
+            let home = dirs::home_dir().expect("Could not find home directory");
+            let cache_path = home.join(".seekr");
+            let mut file_cache = cache::FileCache::load(&cache_path)?;
 
-            println!("\n✨ Lexical indexing complete!");
+            // BM25 lexical index
+            let mut indexer = Indexer::new(&path, force)?;
+            let stats = if force {
+                // Force = full reindex
+                file_cache.clear();
+                let s = indexer.index_directory(&path)?;
+                // Update cache for all files
+                for entry in ignore::WalkBuilder::new(&path)
+                    .hidden(true)
+                    .git_ignore(true)
+                    .build()
+                    .filter_map(|e| e.ok())
+                {
+                    if entry.path().is_file() {
+                        file_cache.update_file(entry.path());
+                    }
+                }
+                file_cache.save()?;
+                s
+            } else {
+                // Incremental = only changed files
+                indexer.index_directory_incremental(&path, &mut file_cache)?
+            };
+
+            if force {
+                println!("\n✨ Lexical indexing complete! (full reindex)");
+            } else {
+                println!("\n✨ Lexical indexing complete! (incremental)");
+            }
             println!("   Files indexed: {}", stats.files_indexed);
             println!("   Total lines: {}", stats.total_lines);
             println!("   Time: {:.2}s", stats.duration_secs);

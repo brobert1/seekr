@@ -140,9 +140,14 @@ impl FileWatcher {
         }
     }
 
-    /// Perform re-indexing
+    /// Perform incremental re-indexing
     fn reindex(&self, path: &Path) -> Result<crate::indexer::IndexStats> {
+        // Load file cache
+        let home = dirs::home_dir().expect("Could not find home directory");
+        let cache_path = home.join(".seekr");
+        let mut file_cache = crate::cache::FileCache::load(&cache_path)?;
+
         let mut indexer = Indexer::new(path, false)?;
-        indexer.index_directory(path)
+        indexer.index_directory_incremental(path, &mut file_cache)
     }
 }
