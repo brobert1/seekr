@@ -92,6 +92,13 @@ pub enum Commands {
         value: Option<String>,
     },
 
+    /// Initialize seekr in the current directory (index + semantic)
+    Init {
+        /// Path to initialize (defaults to current directory)
+        #[arg(value_name = "PATH")]
+        path: Option<PathBuf>,
+    },
+
     /// Show index statistics and health
     Status,
 }

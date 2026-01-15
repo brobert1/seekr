@@ -325,6 +325,66 @@ fn main() -> Result<()> {
                 println!("⚠️  Config command not yet implemented");
             }
         }
+        Commands::Init { path } => {
+            let path = path.unwrap_or_else(|| std::env::current_dir().unwrap());
+            println!("\n🚀 Initializing seekr in {:?}...\n", path);
+
+            // Step 1: Build BM25 index
+            println!("📚 Step 1/2: Building lexical index...");
+            let mut indexer = Indexer::new(&path, true)?;
+            let stats = indexer.index_directory(&path)?;
+            println!(
+                "   ✅ Indexed {} files ({} lines) in {:.2}s\n",
+                stats.files_indexed, stats.total_lines, stats.duration_secs
+            );
+
+            // Step 2: Build semantic index
+            println!("🧠 Step 2/2: Building semantic index...");
+            println!("   (This downloads a 23MB model on first run)\n");
+
+            let home = dirs::home_dir().expect("Could not find home directory");
+            let semantic_path = home.join(".seekr");
+            let mut semantic_indexer = semantic::SemanticIndexer::new(&semantic_path)?;
+
+            // Collect files for semantic indexing
+            let mut files: Vec<(std::path::PathBuf, String)> = Vec::new();
+            let walker = ignore::WalkBuilder::new(&path)
+                .hidden(true)
+                .git_ignore(true)
+                .build();
+
+            for entry in walker.filter_map(|e| e.ok()) {
+                let entry_path = entry.path();
+                if entry_path.is_file() {
+                    if let Some(ext) = entry_path.extension().and_then(|e| e.to_str()) {
+                        if matches!(ext, "rs" | "py" | "js" | "jsx" | "ts" | "tsx" | "go") {
+                            if let Ok(content) = std::fs::read_to_string(entry_path) {
+                                files.push((entry_path.to_path_buf(), content));
+                            }
+                        }
+                    }
+                }
+            }
+
+            let file_refs: Vec<(&std::path::Path, String)> = files
+                .iter()
+                .map(|(p, c)| (p.as_path(), c.clone()))
+                .collect();
+
+            let sem_stats = semantic_indexer.index_files(&file_refs)?;
+            println!(
+                "   ✅ Created {} chunks, {} embeddings in {:.2}s\n",
+                sem_stats.chunks_created, sem_stats.embeddings_generated, sem_stats.duration_secs
+            );
+
+            // Summary
+            println!("🎉 Initialization complete!\n");
+            println!("Try these commands:");
+            println!("   seekr search \"your query\"           # Keyword search");
+            println!("   seekr search \"what you want\" --semantic  # Natural language");
+            println!("   seekr search \"query\" --hybrid       # Best of both");
+            println!("   seekr watch                         # Auto-reindex on changes");
+        }
         Commands::Status => {
             let index_path = Indexer::default_index_path()?;
             match Indexer::get_status(&index_path) {
